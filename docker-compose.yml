@@ -1,0 +1,61 @@
+services:
+  ace-step:
+    container_name: ace-step
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM nvidia/cuda:12.8.0-runtime-ubuntu22.04
+        ENV DEBIAN_FRONTEND=noninteractive
+        ENV PYTHONUNBUFFERED=1
+        ENV HF_HOME=/app/models
+        ENV HF_HUB_ENABLE_HF_TRANSFER=1
+        ENV PATH="/root/.local/bin:/venv/bin:$PATH"
+        ENV VIRTUAL_ENV=/venv
+        ENV UV_PROJECT_ENVIRONMENT=/venv
+
+        RUN apt-get update -q && apt-get install -y -q \
+            git ffmpeg libsndfile1 curl build-essential \
+            && rm -rf /var/lib/apt/lists/*
+
+        RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+        RUN git clone https://github.com/ace-step/ACE-Step-1.5 /app
+        WORKDIR /app
+
+        RUN sed -i "/^\[tool\.uv\]$/a environments = [\"sys_platform == 'linux' and platform_machine == 'x86_64'\"]" pyproject.toml
+
+        RUN uv python install 3.11
+        RUN uv sync \
+            --extra-index-url https://download.pytorch.org/whl/cu128 \
+            --index-strategy unsafe-best-match
+
+        EXPOSE 7861
+    ports:
+      - "7861:7861"
+    environment:
+      - HF_HOME=/app/models
+      - HF_HUB_ENABLE_HF_TRANSFER=1
+      - PYTHONUNBUFFERED=1
+      - CUDA_DEVICE_ORDER=PCI_BUS_ID
+      - ACESTEP_API_KEY=aceace
+    volumes:
+      - ace-step-models:/app/models
+      - ace-step-output:/app/outputs
+    working_dir: /app
+    ipc: host
+    shm_size: '24gb'
+    command: >
+      bash -c "acestep --server-name 0.0.0.0 --port 7861 --enable-api --init_service true"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities:
+                - gpu
+
+volumes:
+  ace-step-models:
+  ace-step-output:
