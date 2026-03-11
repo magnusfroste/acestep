@@ -13,6 +13,10 @@ services:
         ENV PATH="/root/.local/bin:/venv/bin:$PATH"
         ENV VIRTUAL_ENV=/venv
         ENV UV_PROJECT_ENVIRONMENT=/venv
+        
+        # Optimeringar för att undvika nätverks-timeout vid stora paket
+        ENV UV_HTTP_TIMEOUT=600
+        ENV UV_CONCURRENT_DOWNLOADS=2
 
         RUN apt-get update -q && apt-get install -y -q \
             git ffmpeg libsndfile1 curl build-essential \
@@ -20,17 +24,23 @@ services:
 
         RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
+        # Clone ACE-Step 1.5
         RUN git clone https://github.com/ace-step/ACE-Step-1.5 /app
         WORKDIR /app
 
+        # Fix för Linux x86_64 plattform
         RUN sed -i "/^\[tool\.uv\]$/a environments = [\"sys_platform == 'linux' and platform_machine == 'x86_64'\"]" pyproject.toml
 
         RUN uv python install 3.11
+        
+        # Installation med extra timeout-skydd och rensning av gammal cache
         RUN uv sync \
             --extra-index-url https://download.pytorch.org/whl/cu128 \
-            --index-strategy unsafe-best-match
+            --index-strategy unsafe-best-match \
+            --no-cache
 
         EXPOSE 7861
+
     ports:
       - "7861:7861"
     environment:
